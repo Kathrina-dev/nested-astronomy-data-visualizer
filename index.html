@@ -1,6 +1,107 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>LightCurve Viewer</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'IBM Plex Mono', monospace;
+      background: #0e1117;
+      color: #8b95a5;
+      padding: 40px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: .75rem;
+      font-weight: 500;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: #c9d1dc;
+      margin-bottom: 28px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    select, button {
+      font-family: inherit;
+      font-size: .72rem;
+      background: #161b25;
+      color: #8b95a5;
+      border: 1px solid #252d3d;
+      border-radius: 5px;
+      padding: 6px 10px;
+      cursor: pointer;
+      outline: none;
+    }
+    select:focus, button:focus { border-color: #3b82f6; }
+
+    button {
+      color: #c9d1dc;
+      padding: 6px 16px;
+    }
+    button:hover { border-color: #3b82f6; color: #fff; }
+
+    .sep { color: #252d3d; user-select: none; }
+
+    .limit-label { font-size: .72rem; }
+    input[type=range] {
+      -webkit-appearance: none;
+      height: 3px;
+      width: 100px;
+      background: #252d3d;
+      border-radius: 2px;
+      outline: none;
+      vertical-align: middle;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 11px; height: 11px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+    }
+
+    .canvas-wrap {
+      width: 100%;
+      height: 320px;
+      position: relative;
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    .hint {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .68rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #2a3344;
+      pointer-events: none;
+    }
+  </style>
+</head>
 <body>
+
+<h1>Light Curve Viewer</h1>
+
+<div class="controls">
   <select id="field">
     <option value="flux">Flux</option>
     <option value="time">Time</option>
@@ -11,41 +112,100 @@
     <option value="partial">Partial Read</option>
   </select>
 
+  <span class="sep">|</span>
+
+  <span class="limit-label" id="limitValue">100</span>
+  <input type="range" id="limit" min="10" max="5000" value="100" step="10"
+         oninput="document.getElementById('limitValue').textContent = this.value"/>
+
+  <span class="sep">|</span>
+
   <button onclick="loadData()">Load</button>
+</div>
 
-  <canvas id="chart" width="400" height="200"></canvas>
+<div class="canvas-wrap">
+  <canvas id="chart"></canvas>
+  <div class="hint" id="hint">no data loaded</div>
+</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  let chart;
 
-  <script>
-    let chart;
+  async function loadData() {
+    const field = document.getElementById('field').value;
+    const limit = document.getElementById('limit').value;
 
-    async function loadData() {
-      const field = document.getElementById("field").value;
-      const mode = document.getElementById("mode").value;
-      const res = await fetch(
-        `http://localhost:8000/data?field=${field}&mode=${mode}`
-      );
+    const labels = [], g = [], r = [], i = [];
 
-      const response = await res.json();
-      const data = response.data;
+    if (chart) chart.destroy();
+    document.getElementById('hint').style.display = 'none';
 
-      const labels = data.map(d => "Obj " + d.object_id);
-      const values = data.flatMap(d => d.values);
-
-      if (chart) chart.destroy();
-
-      chart = new Chart(document.getElementById("chart"), {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: field,
-            data: values,
-          }]
+    chart = new Chart(document.getElementById('chart').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'g', data: g, borderColor: '#4ade80', borderWidth: 1.5, pointRadius: 0, tension: .3 },
+          { label: 'r', data: r, borderColor: '#f87171', borderWidth: 1.5, pointRadius: 0, tension: .3 },
+          { label: 'i', data: i, borderColor: '#a78bfa', borderWidth: 1.5, pointRadius: 0, tension: .3 },
+        ]
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { display: false },
+          y: {
+            beginAtZero: false,
+            grid: { color: 'rgba(255,255,255,.05)', drawBorder: false },
+            ticks: { color: '#3d4f6b', font: { family: 'IBM Plex Mono', size: 10 }, maxTicksLimit: 5 },
+            border: { display: false }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: { color: '#5a6a80', font: { family: 'IBM Plex Mono', size: 11 }, boxWidth: 12, padding: 16 }
+          }
         }
-      });
+      }
+    });
+
+    try {
+      const res = await fetch(`http://localhost:8000/stream?field=${field}&limit=${limit}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        lines.forEach(line => {
+          if (!line.trim()) return;
+          try {
+            const obj = JSON.parse(line);
+            labels.push('Obj ' + obj.object_id);
+            g.push(obj.bands.g ?? null);
+            r.push(obj.bands.r ?? null);
+            i.push(obj.bands.i ?? null);
+          } catch(e) {}
+        });
+
+        if (labels.length % 100 === 0) chart.update('none');
+      }
+
+      chart.update();
+    } catch(e) {
+      document.getElementById('hint').textContent = 'error: ' + e.message;
+      document.getElementById('hint').style.display = 'flex';
     }
-  </script>
+  }
+</script>
 </body>
 </html>
