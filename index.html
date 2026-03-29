@@ -133,6 +133,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         let chart;
+        const API_BASE = "https://nested-astronomy-data-visualizer.onrender.com";
         async function loadData() {
             const limit = document.getElementById('limit').value;
             const t0 = performance.now();
@@ -177,7 +178,7 @@
             const mode = document.getElementById('mode').value;
 
             const res = await fetch(
-                `http://localhost:8000/stream?limit=${limit}&mode=${mode}`
+                `${API_BASE}/stream?limit=${limit}&mode=${mode}`
             );
             const backendTime = res.headers.get("X-Read-Time-Ms");
             const reader = res.body.getReader();
@@ -233,7 +234,7 @@
         async function runBenchmark() {
             const limit = document.getElementById('limit').value;
 
-            const res = await fetch(`http://localhost:8000/benchmark?limit=${limit}`);
+            const res = await fetch(`${API_BASE}/benchmark?limit=${limit}`);
             const data = await res.json();
 
             document.getElementById("metrics").innerHTML = `
