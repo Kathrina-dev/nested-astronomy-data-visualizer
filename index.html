@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <select id="field">
+    <option value="flux">Flux</option>
+    <option value="time">Time</option>
+  </select>
+
+  <button onclick="loadData()">Load</button>
+
+  <pre id="output"></pre>
+
+  <script>
+    async function loadData() {
+      const field = document.getElementById("field").value;
+      const res = await fetch(`http://localhost:8000/data?field=${field}`);
+      const data = await res.json();
+      document.getElementById("output").innerText = JSON.stringify(data, null, 2);
+    }
+  </script>
+</body>
+</html>
