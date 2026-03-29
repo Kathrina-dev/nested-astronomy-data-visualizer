@@ -98,135 +98,161 @@
   </style>
 </head>
 <body>
+    <h1>Light Curve Viewer</h1>
+    <div class="controls">
+        <select id="mode">
+            <option value="full">Full Read</option>
+            <option value="partial">Partial Read</option>
+            <option value="simulated">Sub-column Read</option>
+        </select>
 
-<h1>Light Curve Viewer</h1>
+        <span class="sep">|</span>
 
-<div class="controls">
-  <select id="field">
-    <option value="flux">Flux</option>
-    <option value="time">Time</option>
-  </select>
+        <span class="limit-label" id="limitValue">100</span>
+        <input type="range" id="limit" min="10" max="5000" value="100" step="10"
+                oninput="document.getElementById('limitValue').textContent = this.value"/>
 
-  <select id="mode">
-    <option value="full">Full Read</option>
-    <option value="partial">Partial Read</option>
-    <option value="simulated">Simulated: Flux Only</option>
-  </select>
+        <span class="sep">|</span>
+        
+        <button onclick="loadData()">Load</button>
 
-  <span class="sep">|</span>
+        <button onclick="runBenchmark()">Benchmark</button>
 
-  <span class="limit-label" id="limitValue">100</span>
-  <input type="range" id="limit" min="10" max="5000" value="100" step="10"
-         oninput="document.getElementById('limitValue').textContent = this.value"/>
+        <span class="sep">|</span>
 
-  <span class="sep">|</span>
-  
-  <button onclick="loadData()">Load</button>
+        <div id="metrics"></div>
 
-  <span class="sep">|</span>
+        <div id="explanation"></div>
+        </div>
 
-  <div id="metrics"></div>
-</div>
+        <div class="canvas-wrap">
+        <canvas id="chart"></canvas>
+        <div class="hint" id="hint">no data loaded</div>
+    </div>
 
-<div class="canvas-wrap">
-  <canvas id="chart"></canvas>
-  <div class="hint" id="hint">no data loaded</div>
-</div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let chart;
+        async function loadData() {
+            const limit = document.getElementById('limit').value;
+            const t0 = performance.now();
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-  let chart;
+            const labels = [], g = [], r = [], i = [];
 
-  async function loadData() {
-    const field = document.getElementById('field').value;
-    const limit = document.getElementById('limit').value;
-    const t0 = performance.now();
+            if (chart) chart.destroy();
+            document.getElementById('hint').style.display = 'none';
 
-    const labels = [], g = [], r = [], i = [];
+            chart = new Chart(document.getElementById('chart').getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                { label: 'g', data: g, borderColor: '#4ade80', borderWidth: 1.5, pointRadius: 0, tension: .3 },
+                { label: 'r', data: r, borderColor: '#f87171', borderWidth: 1.5, pointRadius: 0, tension: .3 },
+                { label: 'i', data: i, borderColor: '#a78bfa', borderWidth: 1.5, pointRadius: 0, tension: .3 },
+                ]
+            },
+            options: {
+                animation: false,
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                x: { display: false },
+                y: {
+                    beginAtZero: false,
+                    grid: { color: 'rgba(255,255,255,.05)', drawBorder: false },
+                    ticks: { color: '#3d4f6b', font: { family: 'IBM Plex Mono', size: 10 }, maxTicksLimit: 5 },
+                    border: { display: false }
+                }
+                },
+                plugins: {
+                legend: {
+                    labels: { color: '#5a6a80', font: { family: 'IBM Plex Mono', size: 11 }, boxWidth: 12, padding: 16 }
+                }
+                }
+            }
+            });
 
-    if (chart) chart.destroy();
-    document.getElementById('hint').style.display = 'none';
+            try {
+            const mode = document.getElementById('mode').value;
 
-    chart = new Chart(document.getElementById('chart').getContext('2d'), {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          { label: 'g', data: g, borderColor: '#4ade80', borderWidth: 1.5, pointRadius: 0, tension: .3 },
-          { label: 'r', data: r, borderColor: '#f87171', borderWidth: 1.5, pointRadius: 0, tension: .3 },
-          { label: 'i', data: i, borderColor: '#a78bfa', borderWidth: 1.5, pointRadius: 0, tension: .3 },
-        ]
-      },
-      options: {
-        animation: false,
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: { display: false },
-          y: {
-            beginAtZero: false,
-            grid: { color: 'rgba(255,255,255,.05)', drawBorder: false },
-            ticks: { color: '#3d4f6b', font: { family: 'IBM Plex Mono', size: 10 }, maxTicksLimit: 5 },
-            border: { display: false }
-          }
-        },
-        plugins: {
-          legend: {
-            labels: { color: '#5a6a80', font: { family: 'IBM Plex Mono', size: 11 }, boxWidth: 12, padding: 16 }
-          }
+            const res = await fetch(
+                `http://localhost:8000/stream?limit=${limit}&mode=${mode}`
+            );
+            const backendTime = res.headers.get("X-Read-Time-Ms");
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                lines.forEach(line => {
+                if (!line.trim()) return;
+                try {
+                    const obj = JSON.parse(line);
+                    labels.push('Obj ' + obj.object_id);
+                    g.push(obj.bands.g ?? null);
+                    r.push(obj.bands.r ?? null);
+                    i.push(obj.bands.i ?? null);
+                } catch(e) {}
+                });
+
+                if (labels.length % 100 === 0) chart.update('none');
+            }
+
+            chart.update();
+
+            const t1 = performance.now();
+            const frontendTime = (t1 - t0).toFixed(2);
+
+            document.getElementById("metrics").innerHTML = `
+                <strong style="color:#4ade80">Read:</strong> ${backendTime} ms 
+                <span style="color:#2a3344">|</span>
+                <strong>Render:</strong> ${frontendTime} ms 
+                <span style="color:#2a3344">|</span>
+                Mode: ${mode}`;
+
+            const explanation = {
+                full: "Reads entire dataset including all nested fields.",
+                partial: "Simulates column selection but current workflow still loads full nested struct (PyArrow limitation).",
+                simulated: "Simulates sub-column read but current workflow still loads full nested struct(PyArrow limitation)."
+            };
+
+            document.getElementById("explanation").textContent = explanation[mode];
+            } catch(e) {
+            document.getElementById('hint').textContent = 'error: ' + e.message;
+            document.getElementById('hint').style.display = 'flex';
+            }
         }
-      }
-    });
+        async function runBenchmark() {
+            const limit = document.getElementById('limit').value;
 
-    try {
-      const mode = document.getElementById('mode').value;
+            const res = await fetch(`http://localhost:8000/benchmark?limit=${limit}`);
+            const data = await res.json();
 
-      const res = await fetch(
-        `http://localhost:8000/stream?field=${field}&limit=${limit}&mode=${mode}`
-      );
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+            document.getElementById("metrics").innerHTML = `
+                <strong>Full:</strong> ${data.full.time_ms} ms (${data.full.size_kb} KB) |
+                <strong>Partial:</strong> ${data.partial.time_ms} ms (${data.partial.size_kb} KB) |
+                <strong style="color:#4ade80">Sub-column:</strong> ${data.simulated.time_ms} ms (${data.simulated.size_kb} KB)
+            `;
+        }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        document.getElementById("mode").addEventListener("change", (e) => {
+            const fieldSelect = document.getElementById("field");
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        lines.forEach(line => {
-          if (!line.trim()) return;
-          try {
-            const obj = JSON.parse(line);
-            labels.push('Obj ' + obj.object_id);
-            g.push(obj.bands.g ?? null);
-            r.push(obj.bands.r ?? null);
-            i.push(obj.bands.i ?? null);
-          } catch(e) {}
+            if (e.target.value === "simulated") {
+                fieldSelect.value = "flux";
+                fieldSelect.disabled = true;
+            } else {
+                fieldSelect.disabled = false;
+            }
         });
-
-        if (labels.length % 100 === 0) chart.update('none');
-      }
-
-      chart.update();
-
-      const t1 = performance.now();
-      const timeMs = (t1 - t0).toFixed(2);
-
-      let insight = "";
-
-      if (mode === "full") insight = "Reading all columns";
-      if (mode === "partial") insight = "Reading nested column";
-      if (mode === "simulated") insight = "Reading simulated sub-column";
-
-      document.getElementById("metrics").textContent = `Mode: ${mode} | ${labels.length} objs | ${timeMs} ms | ${insight}`;
-    } catch(e) {
-      document.getElementById('hint').textContent = 'error: ' + e.message;
-      document.getElementById('hint').style.display = 'flex';
-    }
-  }
-</script>
+    </script>
 </body>
 </html>
