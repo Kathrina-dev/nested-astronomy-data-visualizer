@@ -110,6 +110,7 @@
   <select id="mode">
     <option value="full">Full Read</option>
     <option value="partial">Partial Read</option>
+    <option value="simulated">Simulated: Flux Only</option>
   </select>
 
   <span class="sep">|</span>
@@ -119,8 +120,12 @@
          oninput="document.getElementById('limitValue').textContent = this.value"/>
 
   <span class="sep">|</span>
-
+  
   <button onclick="loadData()">Load</button>
+
+  <span class="sep">|</span>
+
+  <div id="metrics"></div>
 </div>
 
 <div class="canvas-wrap">
@@ -135,6 +140,7 @@
   async function loadData() {
     const field = document.getElementById('field').value;
     const limit = document.getElementById('limit').value;
+    const t0 = performance.now();
 
     const labels = [], g = [], r = [], i = [];
 
@@ -173,7 +179,11 @@
     });
 
     try {
-      const res = await fetch(`http://localhost:8000/stream?field=${field}&limit=${limit}`);
+      const mode = document.getElementById('mode').value;
+
+      const res = await fetch(
+        `http://localhost:8000/stream?field=${field}&limit=${limit}&mode=${mode}`
+      );
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -201,6 +211,17 @@
       }
 
       chart.update();
+
+      const t1 = performance.now();
+      const timeMs = (t1 - t0).toFixed(2);
+
+      let insight = "";
+
+      if (mode === "full") insight = "Reading all columns";
+      if (mode === "partial") insight = "Reading nested column";
+      if (mode === "simulated") insight = "Reading simulated sub-column";
+
+      document.getElementById("metrics").textContent = `Mode: ${mode} | ${labels.length} objs | ${timeMs} ms | ${insight}`;
     } catch(e) {
       document.getElementById('hint').textContent = 'error: ' + e.message;
       document.getElementById('hint').style.display = 'flex';

@@ -46,28 +46,59 @@ def get_data(field: str = "flux", mode: str = "full", limit: int = 100):
     }
 
 @app.get("/stream")
-def stream_data(field: str = "flux", limit: int = 1000):
-    table = pq.read_table("astro.parquet", columns=["object_id", "observations"])
-    table = table.slice(0, limit)
+def stream_data(field: str = "flux", limit: int = 1000, mode: str = "full"):
 
+    start = time.time()
+
+    # FULL READ
+    if mode == "full":
+        table = pq.read_table("astro.parquet")
+
+    # PARTIAL (current limitation)
+    elif mode == "partial":
+        table = pq.read_table("astro.parquet", columns=["object_id", "observations"])
+
+    # SIMULATED (read only needed field)
+    elif mode == "simulated":
+        table = pq.read_table("astro.parquet", columns=["object_id", "observations"])
+
+    table = table.slice(0, limit)
     data = table.to_pylist()
 
     def generate():
         for obj in data:
-            band_values = {"g": [], "r": [], "i": []}
 
-            for obs in obj["observations"]:
-                band_values[obs["band"]].append(obs[field])
+            # FULL / PARTIAL
+            if mode in ["full", "partial"]:
+                band_values = {"g": [], "r": [], "i": []}
 
-            # average per band
-            band_avg = {
-                band: (sum(vals) / len(vals)) if vals else None
-                for band, vals in band_values.items()
-            }
+                for obs in obj["observations"]:
+                    band_values[obs["band"]].append(obs[field])
+
+                band_avg = {
+                    band: (sum(vals) / len(vals)) if vals else None
+                    for band, vals in band_values.items()
+                }
+
+            #  SIMULATED
+            elif mode == "simulated":
+                band_avg = {"g": 0, "r": 0, "i": 0}
+                counts = {"g": 0, "r": 0, "i": 0}
+
+                for obs in obj["observations"]:
+                    b = obs["band"]
+                    band_avg[b] += obs[field]
+                    counts[b] += 1
+
+                for b in band_avg:
+                    band_avg[b] = band_avg[b] / counts[b] if counts[b] else None
 
             yield json.dumps({
                 "object_id": obj["object_id"],
                 "bands": band_avg
             }) + "\n"
+
+    end = time.time()
+    print(f"{mode.upper()} read took: {round(end - start, 3)} sec")
 
     return StreamingResponse(generate(), media_type="application/json")
