@@ -6,16 +6,45 @@
     <option value="time">Time</option>
   </select>
 
+  <select id="mode">
+    <option value="full">Full Read</option>
+    <option value="partial">Partial Read</option>
+  </select>
+
   <button onclick="loadData()">Load</button>
 
-  <pre id="output"></pre>
+  <canvas id="chart" width="400" height="200"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
+    let chart;
+
     async function loadData() {
       const field = document.getElementById("field").value;
-      const res = await fetch(`http://localhost:8000/data?field=${field}`);
-      const data = await res.json();
-      document.getElementById("output").innerText = JSON.stringify(data, null, 2);
+      const mode = document.getElementById("mode").value;
+      const res = await fetch(
+        `http://localhost:8000/data?field=${field}&mode=${mode}`
+      );
+
+      const response = await res.json();
+      const data = response.data;
+
+      const labels = data.map(d => "Obj " + d.object_id);
+      const values = data.flatMap(d => d.values);
+
+      if (chart) chart.destroy();
+
+      chart = new Chart(document.getElementById("chart"), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: field,
+            data: values,
+          }]
+        }
+      });
     }
   </script>
 </body>
