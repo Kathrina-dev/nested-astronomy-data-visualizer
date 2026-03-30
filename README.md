@@ -3,7 +3,8 @@
 ### Why sub-column access matters (and why it currently fails)
 
  Live Demo: [Link](https://kathrina-dev.github.io/nested-astronomy-data-visualizer/)
----
+
+<img width="1846" height="587" alt="image" src="https://github.com/user-attachments/assets/c892a2d8-2d33-4c1b-826a-36294e6a3a1c" />
 
 ## The Problem
 
