@@ -2,7 +2,7 @@
 
 ### Why sub-column access matters (and why it currently fails)
 
- **Live Demo:** [**Link**](https://kathrina-dev.github.io/nested-astronomy-data-visualizer/)
+ Live Demo: [Link](https://kathrina-dev.github.io/nested-astronomy-data-visualizer/)
 ---
 
 ## The Problem
